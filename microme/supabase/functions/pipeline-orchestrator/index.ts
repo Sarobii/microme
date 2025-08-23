@@ -1,3 +1,7 @@
+import { decodeBase64 } from 'jsr:@std/encoding/base64';
+
+const textDecoder = new TextDecoder();
+
 Deno.serve(async (req) => {
     const corsHeaders = {
         'Access-Control-Allow-Origin': '*',
@@ -29,42 +33,35 @@ Deno.serve(async (req) => {
 
         // Get user from auth header using Supabase JWT verification
         const authHeader = req.headers.get('authorization');
+        const apikey = req.headers.get('apikey');
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
             throw new Error('No authorization header or invalid format');
         }
 
         const token = authHeader.replace('Bearer ', '');
         
-        // Simple JWT decode to get user ID (for edge functions, we trust the client-provided JWT)
         let userId;
         try {
-            // More robust JWT parsing
             const tokenParts = token.split('.');
             if (tokenParts.length !== 3) {
                 throw new Error('JWT must have 3 parts');
             }
             
-            // Handle potential padding issues with base64 decoding
-            let payload = tokenParts[1];
-            // Add padding if needed
-            while (payload.length % 4) {
-                payload += '=';
-            }
-            
-            const decodedPayload = JSON.parse(atob(payload));
+            const payload = decodeBase64(tokenParts[1]);
+            const decodedPayload = JSON.parse(textDecoder.decode(payload));
             userId = decodedPayload.sub || decodedPayload.user_id;
             
             if (!userId) {
-                console.log('Token payload:', JSON.stringify(decodedPayload));
                 throw new Error('No user ID found in token payload');
             }
             
             console.log('Starting pipeline orchestration for user:', userId);
         } catch (e) {
-            console.error('JWT decode error details:', e.message);
-            // For testing purposes, use a fallback user ID
-            userId = '95d39df3-18cc-4edb-9db6-5c8f49a905d7';
-            console.log('Using fallback user ID for testing:', userId);
+            console.error('JWT decode error:', e.message);
+            return new Response(JSON.stringify({ error: 'Invalid token' }), {
+                status: 401,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
         }
 
         const results = {
@@ -86,7 +83,8 @@ Deno.serve(async (req) => {
                     method: 'POST',
                     headers: {
                         'Authorization': authHeader,
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'apikey': apikey,
                     },
                     body: JSON.stringify({ posts, uploadSource })
                 });
@@ -113,7 +111,8 @@ Deno.serve(async (req) => {
                     method: 'POST',
                     headers: {
                         'Authorization': authHeader,
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'apikey': apikey,
                     },
                     body: JSON.stringify({})
                 });
@@ -140,7 +139,8 @@ Deno.serve(async (req) => {
                     method: 'POST',
                     headers: {
                         'Authorization': authHeader,
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'apikey': apikey,
                     },
                     body: JSON.stringify({ goal: goal || 'lighthearted authority in AI automation' })
                 });
@@ -166,7 +166,8 @@ Deno.serve(async (req) => {
                 method: 'POST',
                 headers: {
                     'Authorization': authHeader,
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'apikey': apikey,
                 },
                 body: JSON.stringify({})
             });
@@ -190,7 +191,8 @@ Deno.serve(async (req) => {
                     method: 'POST',
                     headers: {
                         'Authorization': authHeader,
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'apikey': apikey,
                     },
                     body: JSON.stringify({ scenario: scenario || 'What if I post 2 case studies per week?' })
                 });
