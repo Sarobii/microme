@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import { Upload, FileText, AlertCircle, CheckCircle, Loader } from 'lucide-react'
+import { parseLinkedInCSV } from '../utils/csvParser'
 
 interface CSVPost {
   content: string
@@ -25,67 +26,16 @@ export const DataUpload: React.FC = () => {
     const reader = new FileReader()
     
     reader.onload = (e) => {
-      try {
-        const csvText = e.target?.result as string
-        const lines = csvText.split('\n').filter(line => line.trim())
-        
-        if (lines.length < 2) {
-          setUploadStatus('error')
-          setStatusMessage('CSV file must contain at least a header row and one data row.')
-          return
-        }
-
-        const headers = lines[0].split(',').map(h => h.trim().toLowerCase())
-        const posts: CSVPost[] = []
-        
-        // Validate required columns
-        const contentIndex = headers.findIndex(h => h.includes('content') || h.includes('text') || h.includes('post'))
-        if (contentIndex === -1) {
-          setUploadStatus('error')
-          setStatusMessage('CSV must contain a column with "content", "text", or "post" in the header.')
-          return
-        }
-        
-        // Optional columns
-        const dateIndex = headers.findIndex(h => h.includes('date') || h.includes('time') || h.includes('created'))
-        const likesIndex = headers.findIndex(h => h.includes('like'))
-        const commentsIndex = headers.findIndex(h => h.includes('comment'))
-        const sharesIndex = headers.findIndex(h => h.includes('share') || h.includes('repost'))
-        const idIndex = headers.findIndex(h => h.includes('id') && !h.includes('user'))
-        
-        for (let i = 1; i < lines.length; i++) {
-          const columns = lines[i].split(',').map(c => c.trim())
-          
-          if (columns.length >= headers.length && columns[contentIndex]) {
-            const post: CSVPost = {
-              content: columns[contentIndex].replace(/^"(.*)"$/, '$1'), // Remove quotes if present
-              date: dateIndex >= 0 ? columns[dateIndex] : undefined,
-              likes: likesIndex >= 0 ? parseInt(columns[likesIndex]) || 0 : 0,
-              comments: commentsIndex >= 0 ? parseInt(columns[commentsIndex]) || 0 : 0,
-              shares: sharesIndex >= 0 ? parseInt(columns[sharesIndex]) || 0 : 0,
-              id: idIndex >= 0 ? columns[idIndex] : `csv_${i}_${Date.now()}`
-            }
-            
-            if (post.content.length > 10) { // Filter out very short content
-              posts.push(post)
-            }
-          }
-        }
-        
-        if (posts.length === 0) {
-          setUploadStatus('error')
-          setStatusMessage('No valid posts found in CSV file.')
-          return
-        }
-        
-        setCsvData(posts)
+      const csvText = e.target?.result as string
+      const parseResult = parseLinkedInCSV(csvText)
+      
+      if (parseResult.success && parseResult.data) {
+        setCsvData(parseResult.data)
         setUploadStatus('success')
-        setStatusMessage(`Successfully parsed ${posts.length} posts from CSV file.`)
-        
-      } catch (error) {
-        console.error('CSV parsing error:', error)
+        setStatusMessage(`Successfully parsed ${parseResult.data.length} posts from CSV file.`)
+      } else {
         setUploadStatus('error')
-        setStatusMessage('Error parsing CSV file. Please check the format.')
+        setStatusMessage(parseResult.error || 'Error parsing CSV file. Please check the format.')
       }
     }
     
@@ -114,18 +64,54 @@ export const DataUpload: React.FC = () => {
     
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0]
-      if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
-        handleFileUpload(file)
-      } else {
+      
+      // Validate file type
+      if (!file.type.includes('csv') && !file.name.endsWith('.csv')) {
         setUploadStatus('error')
-        setStatusMessage('Please upload a CSV file.')
+        setStatusMessage('Please upload a CSV file (.csv extension required).')
+        return
       }
+      
+      // Validate file size (10MB limit)
+      if (file.size > 10 * 1024 * 1024) {
+        setUploadStatus('error')
+        setStatusMessage('File size too large. Please upload a file smaller than 10MB.')
+        return
+      }
+      
+      // Reset previous state
+      setUploadStatus('idle')
+      setStatusMessage('')
+      setCsvData([])
+      
+      handleFileUpload(file)
     }
   }
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      handleFileUpload(e.target.files[0])
+      const file = e.target.files[0]
+      
+      // Validate file type
+      if (!file.type.includes('csv') && !file.name.endsWith('.csv')) {
+        setUploadStatus('error')
+        setStatusMessage('Please upload a CSV file (.csv extension required).')
+        return
+      }
+      
+      // Validate file size (10MB limit)
+      if (file.size > 10 * 1024 * 1024) {
+        setUploadStatus('error')
+        setStatusMessage('File size too large. Please upload a file smaller than 10MB.')
+        return
+      }
+      
+      // Reset previous state
+      setUploadStatus('idle')
+      setStatusMessage('')
+      setCsvData([])
+      
+      handleFileUpload(file)
     }
   }
 
@@ -249,13 +235,25 @@ export const DataUpload: React.FC = () => {
             <div className="text-sm text-blue-800">
               <p className="mb-2">Your CSV should include the following columns:</p>
               <ul className="list-disc list-inside space-y-1">
-                <li><strong>Required:</strong> content/text/post - The text content of your posts</li>
-                <li><strong>Optional:</strong> date/created_at - Post publication date</li>
-                <li><strong>Optional:</strong> likes - Number of likes</li>
-                <li><strong>Optional:</strong> comments - Number of comments</li>
-                <li><strong>Optional:</strong> shares/reposts - Number of shares</li>
+                <li><strong>Required:</strong> content/text/post/description/body - The text content of your posts</li>
+                <li><strong>Optional:</strong> date/time/created/published/timestamp - Post publication date</li>
+                <li><strong>Optional:</strong> likes/reactions/hearts - Number of likes or reactions</li>
+                <li><strong>Optional:</strong> comments/replies/responses - Number of comments</li>
+                <li><strong>Optional:</strong> shares/reposts/retweets - Number of shares</li>
+                <li><strong>Optional:</strong> id/post_id/identifier - Unique post identifier</li>
               </ul>
-              <p className="mt-2 text-xs">Column names are case-insensitive and can include variations of these terms.</p>
+              <div className="mt-3 p-2 bg-blue-100 rounded">
+                <p className="font-medium mb-1">Example CSV format:</p>
+                <code className="text-xs">content,date,likes,comments,shares<br />
+                "Just launched my new project!",2024-01-15,45,12,8<br />
+                "Sharing some insights...",2024-01-18,67,23,15</code>
+              </div>
+              <p className="mt-2 text-xs">
+                • Column names are case-insensitive and flexible<br />
+                • Content should be at least 10 characters long<br />
+                • Quotes around content are automatically handled<br />
+                • Maximum file size: 10MB
+              </p>
             </div>
           </div>
           
