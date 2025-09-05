@@ -1,6 +1,6 @@
-# MicroMe Types
+// MicroMe Types
 
-# Database Types
+// Database Types
 export interface Database {
   public: {
     Tables: {
@@ -53,7 +53,7 @@ export interface Database {
   }
 }
 
-# Profile Types
+// Profile Types
 export interface Profile {
   id: string
   full_name: string | null
@@ -68,7 +68,7 @@ export interface Profile {
 export type ProfileInsert = Omit<Profile, 'id' | 'created_at' | 'updated_at'>
 export type ProfileUpdate = Partial<ProfileInsert>
 
-# Data Ingestion Types
+// Data Ingestion Types
 export interface DataIngestion {
   id: string
   user_id: string
@@ -84,7 +84,7 @@ export interface DataIngestion {
 export type DataIngestionInsert = Omit<DataIngestion, 'id' | 'created_at' | 'updated_at'>
 export type DataIngestionUpdate = Partial<DataIngestionInsert>
 
-# LinkedIn Post Types
+// LinkedIn Post Types
 export interface LinkedInPost {
   id: string
   user_id: string
@@ -104,7 +104,7 @@ export interface LinkedInPost {
 export type LinkedInPostInsert = Omit<LinkedInPost, 'id' | 'created_at'>
 export type LinkedInPostUpdate = Partial<LinkedInPostInsert>
 
-# Persona Analysis Types
+// Persona Analysis Types
 export interface PersonaAnalysis {
   id: string
   user_id: string
@@ -158,7 +158,7 @@ export interface PersonaAnalysisData {
   }
 }
 
-# Content Strategy Types
+// Content Strategy Types
 export interface ContentStrategy {
   id: string
   user_id: string
@@ -206,7 +206,7 @@ export interface ContentStrategyData {
   }
 }
 
-# Simulation Types
+// Simulation Types
 export interface Simulation {
   id: string
   user_id: string
@@ -252,7 +252,7 @@ export interface SimulationData {
   }>
 }
 
-# Transparency Card Types
+// Transparency Card Types
 export interface TransparencyCard {
   id: string
   user_id: string
@@ -285,7 +285,7 @@ export interface TransparencyCardData {
   }
 }
 
-# API Response Types
+// API Response Types
 export interface ApiResponse<T = any> {
   success: boolean
   data?: T
@@ -298,7 +298,7 @@ export interface ApiResponse<T = any> {
   }
 }
 
-# Pipeline Types
+// Pipeline Types
 export interface PipelineStatus {
   pipelineId: string
   status: 'started' | 'processing' | 'completed' | 'failed'
@@ -327,7 +327,7 @@ export interface IngestionResult {
   }
 }
 
-# UI Component Types
+// UI Component Types
 export interface ComponentProps {
   className?: string
   children?: React.ReactNode
@@ -350,7 +350,7 @@ export interface InputProps extends ComponentProps {
   error?: string
 }
 
-# Form Types
+// Form Types
 export interface CSVUploadData {
   content: string
   engagement?: number
@@ -372,7 +372,7 @@ export interface ProfileFormData {
   suggest_tagging: boolean
 }
 
-# Chart & Visualization Types
+// Chart & Visualization Types
 export interface ChartData {
   labels: string[]
   datasets: Array<{
@@ -399,7 +399,7 @@ export interface ContentTheme {
   posts: LinkedInPost[]
 }
 
-# Utility Types
+// Utility Types
 export type DeepPartial<T> = {
   [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P]
 }
@@ -412,7 +412,7 @@ export type RequireAtLeastOne<T, Keys extends keyof T = keyof T> =
       [K in Keys]-?: Required<Pick<T, K>> & Partial<Pick<T, Exclude<Keys, K>>>
   }[Keys]
 
-# Error Types
+// Error Types
 export interface AppError {
   code: string
   message: string
@@ -434,7 +434,7 @@ export class APIError extends Error {
   }
 }
 
-# Hook Types
+// Hook Types
 export interface UseAsyncState<T> {
   data: T | null
   loading: boolean
@@ -455,7 +455,7 @@ export interface UsePaginationResult<T> {
   goToPage: (page: number) => void
 }
 
-# Context Types
+// Context Types
 export interface AuthContextValue {
   user: Profile | null
   loading: boolean
@@ -470,7 +470,7 @@ export interface ThemeContextValue {
   setTheme: (theme: 'light' | 'dark' | 'system') => void
 }
 
-# Constants
+// Constants
 export const PROCESSING_STAGES = {
   INGESTION: 'ingestion',
   PERSONA_ANALYSIS: 'persona_analysis', 

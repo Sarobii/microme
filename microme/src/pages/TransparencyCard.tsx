@@ -120,41 +120,8 @@ export const TransparencyCard: React.FC = () => {
     suggest_tagging: true
   })
 
-  useEffect(() => {
-    if (user) {
-      fetchTransparencyCard()
-      fetchUserSettings()
-    }
-  }, [user])
-
-  const fetchTransparencyCard = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('transparency_cards')
-        .select('*')
-        .eq('user_id', user?.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-
-      if (error) {
-        console.error('Error fetching transparency card:', error)
-        setError('Failed to fetch transparency data')
-      } else if (data && data.length > 0) {
-        setTransparencyData(data[0].card_data)
-        setUserReviewed(data[0].user_reviewed)
-      } else {
-        // Generate transparency card if none exists
-        await generateTransparencyCard()
-      }
-    } catch (err: any) {
-      console.error('Fetch error:', err)
-      setError(err.message || 'Unknown error occurred')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const fetchUserSettings = async () => {
+  const fetchUserSettings = useCallback(async () => {
+    if (!user) return
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -172,11 +139,11 @@ export const TransparencyCard: React.FC = () => {
     } catch (err) {
       console.error('Error fetching user settings:', err)
     }
-  }
+  }, [user])
 
-  const generateTransparencyCard = async () => {
+  const generateTransparencyCard = useCallback(async () => {
     try {
-      const { data, error } = await supabase.functions.invoke('ethics-guard', {
+      const { error } = await supabase.functions.invoke('ethics-guard', {
         body: {},
         headers: {
           'Content-Type': 'application/json'
@@ -187,15 +154,45 @@ export const TransparencyCard: React.FC = () => {
         console.error('Transparency card generation error:', error)
         setError(`Failed to generate transparency card: ${error.message}`)
       } else {
-        await fetchTransparencyCard() // Refresh data
+        await fetchUserSettings() // Refresh data
       }
     } catch (err: any) {
       console.error('Error generating transparency card:', err)
       setError(err.message || 'Failed to generate transparency card')
     }
-  }
+  }, [fetchUserSettings])
 
-  const updateSettings = async (newSettings: Partial<typeof settings>) => {
+  const fetchTransparencyCard = useCallback(async () => {
+    if (!user) return
+    try {
+      const { data, error } = await supabase
+        .from('transparency_cards')
+        .select('*')
+        .eq('user_id', user?.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      if (error) {
+        console.error('Error fetching transparency card:', error)
+        setError('Failed to fetch transparency data')
+      } else if (data && data.length > 0) {
+        setTransparencyData(data[0].card_data)
+        setUserReviewed(data[0].user_reviewed)
+      }
+    } catch (err: any) {
+      console.error('Fetch error:', err)
+      setError(err.message || 'Unknown error occurred')
+    } finally {
+      setLoading(false)
+    }
+  }, [user])
+
+  useEffect(() => {
+    fetchTransparencyCard()
+    fetchUserSettings()
+  }, [fetchTransparencyCard, fetchUserSettings])
+
+  const updateSettings = useCallback(async (newSettings: Partial<typeof settings>) => {
     setSavingSettings(true)
     
     try {
@@ -216,7 +213,7 @@ export const TransparencyCard: React.FC = () => {
     } finally {
       setSavingSettings(false)
     }
-  }
+  }, [user, settings, generateTransparencyCard])
 
   const markAsReviewed = async () => {
     try {

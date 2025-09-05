@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import {
@@ -43,14 +43,8 @@ export const Settings: React.FC = () => {
     data_size: 0
   })
 
-  useEffect(() => {
-    if (user) {
-      fetchSettings()
-      fetchStats()
-    }
-  }, [user])
-
-  const fetchSettings = async () => {
+  const fetchSettings = useCallback(async () => {
+    if (!user) return
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -91,9 +85,10 @@ export const Settings: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [user])
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
+    if (!user) return
     try {
       const [postsResult, personaResult, strategyResult, simulationResult] = await Promise.all([
         supabase.from('linkedin_posts').select('id', { count: 'exact' }).eq('user_id', user?.id),
@@ -113,7 +108,12 @@ export const Settings: React.FC = () => {
     } catch (err) {
       console.error('Stats fetch error:', err)
     }
-  }
+  }, [user])
+
+  useEffect(() => {
+    fetchSettings()
+    fetchStats()
+  }, [fetchSettings, fetchStats])
 
   const saveSettings = async () => {
     setSaving(true)

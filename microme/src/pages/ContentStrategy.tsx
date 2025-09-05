@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import {
@@ -55,13 +55,9 @@ export const ContentStrategy: React.FC = () => {
   const [copiedDraft, setCopiedDraft] = useState<number | null>(null)
   const [expandedSection, setExpandedSection] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (user) {
-      fetchStrategy()
-    }
-  }, [user])
+  const fetchStrategy = useCallback(async () => {
+    if (!user) return
 
-  const fetchStrategy = async () => {
     try {
       const { data, error } = await supabase
         .from('content_strategies')
@@ -85,7 +81,11 @@ export const ContentStrategy: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [user])
+
+  useEffect(() => {
+    fetchStrategy()
+  }, [fetchStrategy])
 
   const generateStrategy = async () => {
     setGenerating(true)

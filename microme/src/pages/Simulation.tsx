@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import {
@@ -124,13 +124,8 @@ export const Simulation: React.FC = () => {
   const [expandedSection, setExpandedSection] = useState<string | null>(null)
   const [simulations, setSimulations] = useState<any[]>([])
 
-  useEffect(() => {
-    if (user) {
-      fetchSimulations()
-    }
-  }, [user])
-
-  const fetchSimulations = async () => {
+  const fetchSimulations = useCallback(async () => {
+    if (!user) return
     try {
       const { data, error } = await supabase
         .from('simulations')
@@ -153,7 +148,11 @@ export const Simulation: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [user])
+
+  useEffect(() => {
+    fetchSimulations()
+  }, [fetchSimulations])
 
   const runSimulation = async () => {
     setRunning(true)

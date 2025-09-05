@@ -28,7 +28,13 @@ Deno.serve(async (req) => {
         const supabaseUrl = Deno.env.get('SUPABASE_URL');
 
         if (!serviceRoleKey || !supabaseUrl) {
-            throw new Error('Supabase configuration missing');
+            console.error('Missing required environment variables: SUPABASE_SERVICE_ROLE_KEY or SUPABASE_URL');
+            return new Response(JSON.stringify({
+                error: 'Server configuration error. Required environment variables are not set.'
+            }), {
+                status: 500,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
         }
 
         // Get user from auth header using Supabase JWT verification

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
@@ -30,13 +30,8 @@ export const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [recentActivity, setRecentActivity] = useState<any[]>([])
 
-  useEffect(() => {
-    if (user) {
-      fetchPipelineStatus()
-    }
-  }, [user])
-
-  const fetchPipelineStatus = async () => {
+  const fetchPipelineStatus = useCallback(async () => {
+    if (!user) return
     try {
       // Check posts count
       const { data: posts } = await supabase
@@ -102,7 +97,11 @@ export const Dashboard: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [user])
+
+  useEffect(() => {
+    fetchPipelineStatus()
+  }, [fetchPipelineStatus])
 
   const getStatusIcon = (completed: boolean) => {
     if (completed) return <CheckCircle className="w-5 h-5 text-green-500" />

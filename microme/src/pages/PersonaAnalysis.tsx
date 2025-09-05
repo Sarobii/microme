@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import {
@@ -85,13 +85,8 @@ export const PersonaAnalysis: React.FC = () => {
   const [showPersonality, setShowPersonality] = useState(true)
   const [expandedEvidenceSection, setExpandedEvidenceSection] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (user) {
-      fetchPersonaAnalysis()
-    }
-  }, [user])
-
-  const fetchPersonaAnalysis = async () => {
+  const fetchPersonaAnalysis = useCallback(async () => {
+    if (!user) return
     try {
       const { data, error } = await supabase
         .from('persona_analysis')
@@ -114,7 +109,11 @@ export const PersonaAnalysis: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [user])
+
+  useEffect(() => {
+    fetchPersonaAnalysis()
+  }, [fetchPersonaAnalysis])
 
   const runAnalysis = async () => {
     setAnalyzing(true)
