@@ -55,13 +55,7 @@ export const ContentStrategy: React.FC = () => {
   const [copiedDraft, setCopiedDraft] = useState<number | null>(null)
   const [expandedSection, setExpandedSection] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (user) {
-      fetchStrategy()
-    }
-  }, [user])
-
-  const fetchStrategy = async () => {
+  const fetchStrategy = React.useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('content_strategies')
@@ -85,7 +79,15 @@ export const ContentStrategy: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [user])
+
+  useEffect(() => {
+    if (user) {
+      fetchStrategy()
+    }
+  }, [user, fetchStrategy])
+
+  // Removed duplicate fetchStrategy declaration to fix redeclaration error.
 
   const generateStrategy = async () => {
     setGenerating(true)
