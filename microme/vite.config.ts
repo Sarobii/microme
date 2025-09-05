@@ -4,6 +4,7 @@ import { defineConfig } from "vite"
 import sourceIdentifierPlugin from 'vite-plugin-source-info'
 
 const isProd = process.env.BUILD_MODE === 'prod'
+
 export default defineConfig({
   plugins: [
     react(), 
@@ -13,6 +14,10 @@ export default defineConfig({
       includeProps: true,
     })
   ],
+  server: {
+    host: true,
+    port: 3000
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
