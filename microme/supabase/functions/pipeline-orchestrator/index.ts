@@ -1,8 +1,4 @@
-import { decodeBase64 } from 'jsr:@std/encoding/base64';
-
-const textDecoder = new TextDecoder();
-
-Deno.serve(async (req) => {
+export default async function handler(req: Request): Promise<Response> {
     const corsHeaders = {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -24,47 +20,68 @@ Deno.serve(async (req) => {
             runFullPipeline = true 
         } = await req.json();
 
-        const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-        const supabaseUrl = Deno.env.get('SUPABASE_URL');
+        const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        const supabaseUrl = process.env.SUPABASE_URL;
 
         if (!serviceRoleKey || !supabaseUrl) {
-            throw new Error('Supabase configuration missing');
+            console.error('[ENV ERROR] Missing required environment variables:', {
+                SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey,
+                SUPABASE_URL: supabaseUrl
+            });
+            return new Response(JSON.stringify({ 
+                error: 'Server configuration error. Required environment variables are not set.',
+                details: {
+                    SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey,
+                    SUPABASE_URL: supabaseUrl
+                }
+            }), {
+                status: 500,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
         }
 
         // Get user from auth header using Supabase JWT verification
         const authHeader = req.headers.get('authorization');
         const apikey = req.headers.get('apikey');
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            throw new Error('No authorization header or invalid format');
+            console.error('[AUTH ERROR] No authorization header or invalid format');
+            return new Response(JSON.stringify({ error: 'No authorization header or invalid format' }), {
+                status: 401,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
         }
 
         const token = authHeader.replace('Bearer ', '');
-        
         let userId;
         try {
             const tokenParts = token.split('.');
             if (tokenParts.length !== 3) {
                 throw new Error('JWT must have 3 parts');
             }
-            
-            const payload = decodeBase64(tokenParts[1]);
-            const decodedPayload = JSON.parse(textDecoder.decode(payload));
+            const payload = atob(tokenParts[1]);
+            const decodedPayload = JSON.parse(payload);
             userId = decodedPayload.sub || decodedPayload.user_id;
-            
             if (!userId) {
                 throw new Error('No user ID found in token payload');
             }
-            
-            console.log('Starting pipeline orchestration for user:', userId);
+            console.log('[AUTH] Starting pipeline orchestration for user:', userId);
         } catch (e) {
-            console.error('JWT decode error:', e.message);
-            return new Response(JSON.stringify({ error: 'Invalid token' }), {
+            console.error('[AUTH ERROR] JWT decode error:', e.message, e);
+            return new Response(JSON.stringify({ error: 'Invalid token', details: e.message }), {
                 status: 401,
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' }
             });
         }
 
-        const results = {
+        type StepResult = { data?: any } | null;
+        const results: {
+            ingestion: StepResult;
+            persona_analysis: StepResult;
+            strategy_planning: StepResult;
+            ethics_guard: StepResult;
+            simulation: StepResult;
+            errors: string[];
+        } = {
             ingestion: null,
             persona_analysis: null,
             strategy_planning: null,
@@ -78,26 +95,29 @@ Deno.serve(async (req) => {
         // Step 1: Data Ingestion
         if (posts && Array.isArray(posts) && posts.length > 0) {
             try {
-                console.log('Step 1: Running ingestion agent...');
+                console.log('[INGESTION] Step 1: Running ingestion agent...');
+                const ingestionHeaders: Record<string, string> = {
+                    'Authorization': authHeader,
+                    'Content-Type': 'application/json',
+                };
+                if (typeof apikey === 'string') ingestionHeaders['apikey'] = apikey;
                 const ingestionResponse = await fetch(`${supabaseUrl}/functions/v1/ingestion-agent`, {
                     method: 'POST',
-                    headers: {
-                        'Authorization': authHeader,
-                        'Content-Type': 'application/json',
-                        'apikey': apikey,
-                    },
+                    headers: ingestionHeaders,
                     body: JSON.stringify({ posts, uploadSource })
                 });
 
                 if (ingestionResponse.ok) {
                     results.ingestion = await ingestionResponse.json();
-                    console.log('✓ Ingestion completed successfully');
+                    console.log('[INGESTION] ✓ Ingestion completed successfully');
                 } else {
                     const errorText = await ingestionResponse.text();
+                    console.error('[INGESTION ERROR] Ingestion agent returned non-2xx:', errorText);
                     results.errors.push(`Ingestion failed: ${errorText}`);
                     pipelineSuccess = false;
                 }
             } catch (error) {
+                console.error('[INGESTION ERROR] Exception:', error);
                 results.errors.push(`Ingestion error: ${error.message}`);
                 pipelineSuccess = false;
             }
@@ -107,13 +127,14 @@ Deno.serve(async (req) => {
         if (pipelineSuccess || !posts) {
             try {
                 console.log('Step 2: Running persona analyst...');
+                const personaHeaders: Record<string, string> = {
+                    'Authorization': authHeader,
+                    'Content-Type': 'application/json',
+                };
+                if (typeof apikey === 'string') personaHeaders['apikey'] = apikey;
                 const personaResponse = await fetch(`${supabaseUrl}/functions/v1/persona-analyst`, {
                     method: 'POST',
-                    headers: {
-                        'Authorization': authHeader,
-                        'Content-Type': 'application/json',
-                        'apikey': apikey,
-                    },
+                    headers: personaHeaders,
                     body: JSON.stringify({})
                 });
 
@@ -135,13 +156,14 @@ Deno.serve(async (req) => {
         if (pipelineSuccess) {
             try {
                 console.log('Step 3: Running strategy planner...');
+                const strategyHeaders: Record<string, string> = {
+                    'Authorization': authHeader,
+                    'Content-Type': 'application/json',
+                };
+                if (typeof apikey === 'string') strategyHeaders['apikey'] = apikey;
                 const strategyResponse = await fetch(`${supabaseUrl}/functions/v1/strategy-planner`, {
                     method: 'POST',
-                    headers: {
-                        'Authorization': authHeader,
-                        'Content-Type': 'application/json',
-                        'apikey': apikey,
-                    },
+                    headers: strategyHeaders,
                     body: JSON.stringify({ goal: goal || 'lighthearted authority in AI automation' })
                 });
 
@@ -162,13 +184,14 @@ Deno.serve(async (req) => {
         // Step 4: Ethics Guard (runs regardless of strategy success for transparency)
         try {
             console.log('Step 4: Running ethics guard...');
+            const ethicsHeaders: Record<string, string> = {
+                'Authorization': authHeader,
+                'Content-Type': 'application/json',
+            };
+            if (typeof apikey === 'string') ethicsHeaders['apikey'] = apikey;
             const ethicsResponse = await fetch(`${supabaseUrl}/functions/v1/ethics-guard`, {
                 method: 'POST',
-                headers: {
-                    'Authorization': authHeader,
-                    'Content-Type': 'application/json',
-                    'apikey': apikey,
-                },
+                headers: ethicsHeaders,
                 body: JSON.stringify({})
             });
 
@@ -187,13 +210,14 @@ Deno.serve(async (req) => {
         if (results.persona_analysis || !posts) {
             try {
                 console.log('Step 5: Running simulation agent...');
+                const simulationHeaders: Record<string, string> = {
+                    'Authorization': authHeader,
+                    'Content-Type': 'application/json',
+                };
+                if (typeof apikey === 'string') simulationHeaders['apikey'] = apikey;
                 const simulationResponse = await fetch(`${supabaseUrl}/functions/v1/simulation-agent`, {
                     method: 'POST',
-                    headers: {
-                        'Authorization': authHeader,
-                        'Content-Type': 'application/json',
-                        'apikey': apikey,
-                    },
+                    headers: simulationHeaders,
                     body: JSON.stringify({ scenario: scenario || 'What if I post 2 case studies per week?' })
                 });
 
@@ -238,11 +262,11 @@ Deno.serve(async (req) => {
                 message: `MicroMe pipeline ${pipelineSummary.status}`,
                 summary: pipelineSummary,
                 results: {
-                    ingestion: results.ingestion?.data,
-                    persona_analysis: results.persona_analysis?.data,
-                    strategy_planning: results.strategy_planning?.data,
-                    ethics_guard: results.ethics_guard?.data,
-                    simulation: results.simulation?.data
+                    ingestion: results.ingestion?.data ?? results.ingestion,
+                    persona_analysis: results.persona_analysis?.data ?? results.persona_analysis,
+                    strategy_planning: results.strategy_planning?.data ?? results.strategy_planning,
+                    ethics_guard: results.ethics_guard?.data ?? results.ethics_guard,
+                    simulation: results.simulation?.data ?? results.simulation
                 },
                 recommendations: {
                     immediate: [
@@ -267,21 +291,18 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify(result), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
-
     } catch (error) {
         console.error('Pipeline orchestration error:', error);
-
         const errorResponse = {
             error: {
                 code: 'PIPELINE_ORCHESTRATION_FAILED',
-                message: error.message,
+                message: (error as Error).message,
                 timestamp: new Date().toISOString()
             }
         };
-
         return new Response(JSON.stringify(errorResponse), {
             status: 500,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
     }
-});
+}

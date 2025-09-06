@@ -1,15 +1,17 @@
-# Utility functions for MicroMe
+// Utility functions for MicroMe
 
-# Supabase client utilities
+// Supabase client utilities
 export { createClientComponentClient, createServerComponentClient } from '@supabase/auth-helpers-nextjs'
 export type { Database } from '../types'
 
-# Type-safe Supabase client
+// Type-safe Supabase client
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { Database } from '../types'
 export const createSupabaseClient = () => {
   return createClientComponentClient<Database>()
 }
 
-# Error handling utilities
+// Error handling utilities
 export class APIError extends Error {
   code: string
   details?: Record<string, any>
@@ -24,7 +26,7 @@ export class APIError extends Error {
   }
 }
 
-# Response wrapper for consistent API responses
+// Response wrapper for consistent API responses
 export const createApiResponse = <T>(data?: T, error?: { code: string; message: string; details?: any }) => {
   if (error) {
     return {
@@ -43,7 +45,7 @@ export const createApiResponse = <T>(data?: T, error?: { code: string; message: 
   }
 }
 
-# Local storage utilities with type safety
+// Local storage utilities with type safety
 export const storage = {
   get: <T>(key: string, defaultValue?: T): T | null => {
     try {
@@ -79,7 +81,7 @@ export const storage = {
   }
 }
 
-# Date formatting utilities
+// Date formatting utilities
 export const formatters = {
   date: (date: string | Date) => {
     return new Intl.DateTimeFormat('en-US', {
@@ -114,7 +116,7 @@ export const formatters = {
   }
 }
 
-# Number formatting utilities
+// Number formatting utilities
 export const numbers = {
   format: (num: number, options?: Intl.NumberFormatOptions) => {
     return new Intl.NumberFormat('en-US', options).format(num)
@@ -136,7 +138,7 @@ export const numbers = {
   }
 }
 
-# Array utilities
+// Array utilities
 export const arrays = {
   groupBy: <T, K extends string | number>(arr: T[], key: (item: T) => K): Record<K, T[]> => {
     return arr.reduce((groups, item) => {
@@ -167,7 +169,7 @@ export const arrays = {
   }
 }
 
-# String utilities
+// String utilities
 export const strings = {
   truncate: (str: string, length: number, suffix = '...') => {
     if (str.length <= length) return str
@@ -191,7 +193,7 @@ export const strings = {
   }
 }
 
-# Validation utilities
+// Validation utilities
 export const validators = {
   email: (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -220,7 +222,7 @@ export const validators = {
   }
 }
 
-# File utilities
+// File utilities
 export const files = {
   getFileExtension: (filename: string): string => {
     return filename.split('.').pop()?.toLowerCase() || ''
@@ -253,7 +255,7 @@ export const files = {
   }
 }
 
-# CSV parsing utilities
+// CSV parsing utilities
 export const csv = {
   parse: (csvText: string): Array<Record<string, string>> => {
     const lines = csvText.trim().split('\n')
@@ -295,7 +297,7 @@ export const csv = {
   }
 }
 
-# Async utilities
+// Async utilities
 export const async = {
   retry: async <T>(
     fn: () => Promise<T>, 
@@ -328,7 +330,7 @@ export const async = {
   }
 }
 
-# Environment utilities
+// Environment utilities
 export const env = {
   isDevelopment: import.meta.env.DEV,
   isProduction: import.meta.env.PROD,
@@ -346,7 +348,7 @@ export const env = {
   }
 }
 
-# Analytics utilities
+// Analytics utilities
 export const analytics = {
   calculateEngagementRate: (likes: number, comments: number, shares: number, reach: number): number => {
     if (reach === 0) return 0
@@ -373,7 +375,7 @@ export const analytics = {
   }
 }
 
-# Default export with all utilities
+// Default export with all utilities
 const utils = {
   APIError,
   createApiResponse,
