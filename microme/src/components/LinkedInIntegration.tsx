@@ -1,363 +1,294 @@
-import React, { useState, useEffect } from 'react'
-import { 
-  Linkedin, 
-  ExternalLink, 
-  Shield, 
-  CheckCircle, 
-  AlertCircle, 
-  Loader, 
-  Zap,
-  Users,
-  TrendingUp,
-  Link as LinkIcon
-} from 'lucide-react'
-import { linkedInService, LinkedInPost } from '../services/linkedInService'
+import React, { useState, useCallback } from 'react'
+import { AlertCircle, CheckCircle, ExternalLink, Loader, UserCheck, Globe } from 'lucide-react'
+import { LinkedInService, LinkedInPost } from '../services/linkedInService'
+import { useAuth } from '../contexts/AuthContext'
 
 interface LinkedInIntegrationProps {
   onPostsExtracted: (posts: LinkedInPost[]) => void
   onError: (error: string) => void
 }
 
+type IntegrationMethod = 'oauth' | 'url'
+type IntegrationStatus = 'idle' | 'loading' | 'success' | 'error'
+
 export const LinkedInIntegration: React.FC<LinkedInIntegrationProps> = ({
   onPostsExtracted,
   onError
 }) => {
-  const [method, setMethod] = useState<'oauth' | 'url'>('oauth')
-  const [profileUrl, setProfileUrl] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const { user } = useAuth()
+  const [method, setMethod] = useState<IntegrationMethod>('oauth')
+  const [status, setStatus] = useState<IntegrationStatus>('idle')
   const [statusMessage, setStatusMessage] = useState('')
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [profileUrl, setProfileUrl] = useState('')
+  const [extractedPosts, setExtractedPosts] = useState<LinkedInPost[]>([])
 
-  useEffect(() => {
-    setIsAuthenticated(linkedInService.isAuthenticated())
-  }, [])
+  const linkedInService = new LinkedInService()
 
-  const handleOAuthLogin = async () => {
-    setLoading(true)
-    setStatus('idle')
-    
-    try {
-      // For MVP, we'll guide users to use URL method since OAuth requires API keys
-      setMethod('url')
-      setStatus('error')
-      setStatusMessage('LinkedIn OAuth requires developer credentials. Please use the LinkedIn URL method below for now.')
-      
-      // In a full implementation:
-      // linkedInService.initiateOAuthFlow()
-      
-    } catch (error: any) {
-      setStatus('error')
-      setStatusMessage(error.message)
-      onError(error.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleUrlExtraction = async () => {
-    if (!profileUrl.trim()) {
-      setStatus('error')
-      setStatusMessage('Please enter your LinkedIn profile URL')
+  const handleOAuthIntegration = useCallback(async () => {
+    if (!user) {
+      onError('Please log in to connect your LinkedIn account')
       return
     }
 
-    setLoading(true)
-    setStatus('idle')
-    setStatusMessage('Extracting posts from your LinkedIn profile...')
+    setStatus('loading')
+    setStatusMessage('Redirecting to LinkedIn...')
 
     try {
-      const posts = await linkedInService.fetchPostsByProfileUrl(profileUrl)
+      // In a real implementation, these would come from environment variables
+      const clientId = process.env.VITE_LINKEDIN_CLIENT_ID || 'demo_client_id'
+      const redirectUri = `${window.location.origin}/auth/linkedin/callback`
       
-      if (posts.length === 0) {
+      if (clientId === 'demo_client_id') {
+        // Demo mode - show instructions
         setStatus('error')
-        setStatusMessage('No posts found. Make sure your profile has public posts and try again.')
+        setStatusMessage('LinkedIn OAuth requires developer credentials. Please use the Profile URL method below, or contact support to set up OAuth integration.')
         return
       }
 
-      setStatus('success')
-      setStatusMessage(`Successfully extracted ${posts.length} posts from your LinkedIn profile!`)
-      onPostsExtracted(posts)
+      const authUrl = LinkedInService.generateAuthUrl(clientId, redirectUri)
+      window.location.href = authUrl
       
-    } catch (error: any) {
+    } catch (error) {
       setStatus('error')
-      setStatusMessage(error.message || 'Failed to extract posts from LinkedIn profile')
-      onError(error.message)
-    } finally {
-      setLoading(false)
+      setStatusMessage(`OAuth setup failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      onError('Failed to initiate LinkedIn OAuth')
     }
-  }
+  }, [user, onError])
+
+  const handleUrlIntegration = useCallback(async () => {
+    if (!profileUrl.trim()) {
+      setStatus('error')
+      setStatusMessage('Please enter a valid LinkedIn profile URL')
+      return
+    }
+
+    setStatus('loading')
+    setStatusMessage('Extracting posts from LinkedIn profile...')
+    setExtractedPosts([])
+
+    try {
+      const result = await linkedInService.fetchPostsByProfileUrl(profileUrl)
+      
+      if (!result.success || !result.data) {
+        setStatus('error')
+        setStatusMessage(result.error || 'Failed to extract posts from profile')
+        onError(result.error || 'Profile extraction failed')
+        return
+      }
+
+      if (result.data.length === 0) {
+        setStatus('error')
+        setStatusMessage('No posts found on this LinkedIn profile. Please check the URL or try a different profile.')
+        return
+      }
+
+      setExtractedPosts(result.data)
+      setStatus('success')
+      setStatusMessage(`Successfully extracted ${result.data.length} posts from LinkedIn profile!`)
+      onPostsExtracted(result.data)
+
+    } catch (error) {
+      setStatus('error')
+      setStatusMessage(`Profile extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      onError('Failed to extract LinkedIn posts')
+    }
+  }, [profileUrl, linkedInService, onPostsExtracted, onError])
 
   const validateLinkedInUrl = (url: string): boolean => {
-    const linkedinRegex = /^https?:\/\/(www\.)?linkedin\.com\/(in|pub)\/[a-zA-Z0-9\-_%]+\/?(\?.*)?$/
-    return linkedinRegex.test(url)
+    const linkedinProfileRegex = /^https:\/\/(www\.)?linkedin\.com\/in\/[a-zA-Z0-9\-_.]+\/?$/
+    return linkedinProfileRegex.test(url)
   }
 
   const isUrlValid = profileUrl ? validateLinkedInUrl(profileUrl) : true
 
   return (
-    <div className="space-y-6">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <h2 className="text-xl font-semibold text-gray-900 mb-4">LinkedIn Integration</h2>
+      <p className="text-gray-600 mb-6">
+        Connect your LinkedIn account to analyze your posts and get personalized content recommendations.
+      </p>
+
       {/* Method Selection */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <button
           onClick={() => setMethod('oauth')}
-          className={`p-6 rounded-xl border-2 transition-all text-left ${
+          className={`p-4 rounded-lg border-2 transition-colors text-left ${
             method === 'oauth'
-              ? 'border-blue-500 bg-blue-50 shadow-md'
-              : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
+              ? 'border-blue-500 bg-blue-50'
+              : 'border-gray-200 hover:border-gray-300'
           }`}
         >
-          <div className="flex items-center space-x-3 mb-3">
-            <div className={`p-2 rounded-lg ${method === 'oauth' ? 'bg-blue-600' : 'bg-gray-400'}`}>
-              <Linkedin className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-gray-900">Connect LinkedIn Account</h3>
-              <p className="text-sm text-gray-600">Secure OAuth integration</p>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center space-x-2 text-sm text-green-600">
-              <CheckCircle className="w-4 h-4" />
-              <span>Real-time data access</span>
-            </div>
-            <div className="flex items-center space-x-2 text-sm text-green-600">
-              <CheckCircle className="w-4 h-4" />
-              <span>Complete engagement metrics</span>
-            </div>
-            <div className="flex items-center space-x-2 text-sm text-orange-500">
-              <AlertCircle className="w-4 h-4" />
-              <span>Coming soon (MVP uses URL method)</span>
-            </div>
-          </div>
+          <UserCheck className="w-8 h-8 text-blue-600 mb-2" />
+          <h3 className="font-semibold mb-1">OAuth Integration</h3>
+          <p className="text-sm text-gray-600">
+            Secure authentication with full API access. Requires LinkedIn developer credentials.
+          </p>
         </button>
-
+        
         <button
           onClick={() => setMethod('url')}
-          className={`p-6 rounded-xl border-2 transition-all text-left ${
+          className={`p-4 rounded-lg border-2 transition-colors text-left ${
             method === 'url'
-              ? 'border-blue-500 bg-blue-50 shadow-md'
-              : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
+              ? 'border-blue-500 bg-blue-50'
+              : 'border-gray-200 hover:border-gray-300'
           }`}
         >
-          <div className="flex items-center space-x-3 mb-3">
-            <div className={`p-2 rounded-lg ${method === 'url' ? 'bg-blue-600' : 'bg-gray-400'}`}>
-              <LinkIcon className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-gray-900">LinkedIn Profile URL</h3>
-              <p className="text-sm text-gray-600">Quick profile analysis</p>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center space-x-2 text-sm text-green-600">
-              <CheckCircle className="w-4 h-4" />
-              <span>No login required</span>
-            </div>
-            <div className="flex items-center space-x-2 text-sm text-green-600">
-              <CheckCircle className="w-4 h-4" />
-              <span>Instant setup</span>
-            </div>
-            <div className="flex items-center space-x-2 text-sm text-blue-600">
-              <Zap className="w-4 h-4" />
-              <span>Recommended for getting started</span>
-            </div>
-          </div>
+          <Globe className="w-8 h-8 text-blue-600 mb-2" />
+          <h3 className="font-semibold mb-1">Profile URL</h3>
+          <p className="text-sm text-gray-600">
+            Extract posts using your public LinkedIn profile URL. Quick and easy setup.
+          </p>
         </button>
       </div>
 
-      {/* OAuth Method */}
+      {/* OAuth Integration */}
       {method === 'oauth' && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <div className="text-center space-y-4">
-            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
-              <Linkedin className="w-8 h-8 text-blue-600" />
-            </div>
-            
-            <div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                Connect Your LinkedIn Account
-              </h3>
-              <p className="text-gray-600 mb-4">
-                Securely connect your LinkedIn account for complete post analytics and real-time insights.
-              </p>
-            </div>
-
-            {!isAuthenticated ? (
-              <button
-                onClick={handleOAuthLogin}
-                disabled={loading}
-                className="inline-flex items-center px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {loading ? (
-                  <Loader className="w-5 h-5 mr-2 animate-spin" />
-                ) : (
-                  <Linkedin className="w-5 h-5 mr-2" />
-                )}
-                {loading ? 'Connecting...' : 'Connect with LinkedIn'}
-              </button>
-            ) : (
-              <div className="text-center">
-                <div className="inline-flex items-center px-4 py-2 bg-green-100 text-green-800 rounded-lg mb-4">
-                  <CheckCircle className="w-5 h-5 mr-2" />
-                  LinkedIn account connected
-                </div>
-                <button
-                  onClick={() => linkedInService.fetchUserPosts()}
-                  className="block mx-auto px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700"
-                >
-                  Import My LinkedIn Posts
-                </button>
-              </div>
-            )}
-
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mt-4">
-              <div className="flex items-start space-x-3">
-                <AlertCircle className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
-                <div className="text-sm text-orange-800">
-                  <strong>Coming Soon:</strong> Direct LinkedIn OAuth integration requires API credentials. 
-                  For now, please use the LinkedIn URL method below for instant access to your profile analysis.
-                </div>
-              </div>
-            </div>
+        <div className="space-y-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h3 className="font-medium text-blue-900 mb-2">OAuth Authentication</h3>
+            <p className="text-sm text-blue-800 mb-3">
+              This method provides the most comprehensive access to your LinkedIn data, including private posts and detailed analytics.
+            </p>
+            <ul className="text-sm text-blue-800 space-y-1 mb-4">
+              <li>• Full access to your LinkedIn posts and profile</li>
+              <li>• Real-time data synchronization</li>
+              <li>• Secure token-based authentication</li>
+              <li>• Automatic data updates</li>
+            </ul>
           </div>
+          
+          <button
+            onClick={handleOAuthIntegration}
+            disabled={status === 'loading'}
+            className="flex items-center justify-center w-full px-4 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {status === 'loading' ? (
+              <>
+                <Loader className="w-4 h-4 mr-2 animate-spin" />
+                Connecting to LinkedIn...
+              </>
+            ) : (
+              <>
+                <ExternalLink className="w-4 h-4 mr-2" />
+                Connect with LinkedIn
+              </>
+            )}
+          </button>
         </div>
       )}
 
-      {/* URL Method */}
+      {/* URL Integration */}
       {method === 'url' && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <div className="space-y-6">
-            <div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                Enter Your LinkedIn Profile URL
-              </h3>
-              <p className="text-gray-600">
-                We'll analyze your public LinkedIn posts and extract insights for your persona analysis.
-              </p>
-            </div>
-
-            {/* URL Input */}
-            <div>
-              <label htmlFor="linkedin-url" className="block text-sm font-medium text-gray-700 mb-2">
-                LinkedIn Profile URL
-              </label>
-              <div className="relative">
-                <input
-                  id="linkedin-url"
-                  type="url"
-                  value={profileUrl}
-                  onChange={(e) => setProfileUrl(e.target.value)}
-                  placeholder="https://www.linkedin.com/in/yourname"
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                    !isUrlValid ? 'border-red-300' : 'border-gray-300'
-                  }`}
-                />
-                {profileUrl && (
-                  <div className="absolute inset-y-0 right-0 flex items-center pr-3">
-                    {isUrlValid ? (
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                    ) : (
-                      <AlertCircle className="w-5 h-5 text-red-500" />
-                    )}
-                  </div>
-                )}
-              </div>
-              {!isUrlValid && profileUrl && (
-                <p className="mt-1 text-sm text-red-600">
-                  Please enter a valid LinkedIn profile URL (e.g., https://www.linkedin.com/in/yourname)
-                </p>
-              )}
-            </div>
-
-            {/* Instructions */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h4 className="font-medium text-blue-900 mb-2">How to find your LinkedIn URL:</h4>
-              <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-                <li>Go to your LinkedIn profile page</li>
-                <li>Click on your profile picture or "View profile" button</li>
-                <li>Copy the URL from your browser's address bar</li>
-                <li>Paste it in the field above</li>
-              </ol>
-            </div>
-
-            {/* Extract Button */}
-            <button
-              onClick={handleUrlExtraction}
-              disabled={loading || !profileUrl || !isUrlValid}
-              className="w-full flex items-center justify-center px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {loading ? (
-                <>
-                  <Loader className="w-5 h-5 mr-2 animate-spin" />
-                  Extracting Posts...
-                </>
-              ) : (
-                <>
-                  <TrendingUp className="w-5 h-5 mr-2" />
-                  Extract My LinkedIn Posts
-                </>
-              )}
-            </button>
+        <div className="space-y-4">
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <h3 className="font-medium text-green-900 mb-2">Profile URL Integration</h3>
+            <p className="text-sm text-green-800 mb-3">
+              Enter your LinkedIn profile URL to extract your public posts. No developer account required.
+            </p>
+            <ul className="text-sm text-green-800 space-y-1 mb-4">
+              <li>• No authentication required</li>
+              <li>• Works with public LinkedIn profiles</li>
+              <li>• Quick setup and extraction</li>
+              <li>• Supports most LinkedIn profile formats</li>
+            </ul>
           </div>
+
+          <div>
+            <label htmlFor="profileUrl" className="block text-sm font-medium text-gray-700 mb-2">
+              LinkedIn Profile URL
+            </label>
+            <input
+              type="url"
+              id="profileUrl"
+              value={profileUrl}
+              onChange={(e) => setProfileUrl(e.target.value)}
+              placeholder="https://linkedin.com/in/your-username"
+              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                !isUrlValid ? 'border-red-300' : 'border-gray-300'
+              }`}
+            />
+            {!isUrlValid && (
+              <p className="mt-1 text-sm text-red-600">
+                Please enter a valid LinkedIn profile URL (e.g., https://linkedin.com/in/username)
+              </p>
+            )}
+          </div>
+
+          <button
+            onClick={handleUrlIntegration}
+            disabled={status === 'loading' || !profileUrl.trim() || !isUrlValid}
+            className="flex items-center justify-center w-full px-4 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {status === 'loading' ? (
+              <>
+                <Loader className="w-4 h-4 mr-2 animate-spin" />
+                Extracting Posts...
+              </>
+            ) : (
+              <>
+                <Globe className="w-4 h-4 mr-2" />
+                Extract LinkedIn Posts
+              </>
+            )}
+          </button>
         </div>
       )}
 
       {/* Status Messages */}
       {status === 'success' && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+        <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
           <div className="flex items-center">
-            <CheckCircle className="w-5 h-5 text-green-500 mr-3" />
+            <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
             <p className="text-green-800">{statusMessage}</p>
           </div>
         </div>
       )}
-
+      
       {status === 'error' && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
           <div className="flex items-center">
-            <AlertCircle className="w-5 h-5 text-red-500 mr-3" />
+            <AlertCircle className="w-5 h-5 text-red-500 mr-2" />
             <p className="text-red-800">{statusMessage}</p>
           </div>
         </div>
       )}
 
-      {/* Benefits */}
-      <div className="bg-gray-50 rounded-lg p-6">
-        <h4 className="font-semibold text-gray-900 mb-4">What you'll get:</h4>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="flex items-start space-x-3">
-            <Users className="w-5 h-5 text-blue-600 mt-0.5" />
-            <div>
-              <h5 className="font-medium text-gray-900">Persona Analysis</h5>
-              <p className="text-sm text-gray-600">Deep insights into your professional voice and content themes</p>
-            </div>
-          </div>
-          <div className="flex items-start space-x-3">
-            <TrendingUp className="w-5 h-5 text-green-600 mt-0.5" />
-            <div>
-              <h5 className="font-medium text-gray-900">Engagement Patterns</h5>
-              <p className="text-sm text-gray-600">Understand what content resonates with your audience</p>
-            </div>
-          </div>
-          <div className="flex items-start space-x-3">
-            <Zap className="w-5 h-5 text-purple-600 mt-0.5" />
-            <div>
-              <h5 className="font-medium text-gray-900">Content Strategy</h5>
-              <p className="text-sm text-gray-600">AI-powered recommendations for better content performance</p>
-            </div>
+      {/* Posts Preview */}
+      {extractedPosts.length > 0 && (
+        <div className="mt-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">Extracted Posts Preview</h3>
+          <div className="bg-gray-50 rounded-lg p-4 max-h-64 overflow-y-auto">
+            <p className="text-sm text-gray-600 mb-3">Showing first 3 posts:</p>
+            {extractedPosts.slice(0, 3).map((post, index) => (
+              <div key={post.id || index} className="border-b border-gray-200 pb-2 mb-2 last:border-b-0">
+                <p className="text-sm font-medium text-gray-900 line-clamp-2">
+                  {post.content.substring(0, 120)}{post.content.length > 120 ? '...' : ''}
+                </p>
+                <div className="flex space-x-4 mt-1 text-xs text-gray-500">
+                  <span>Date: {new Date(post.createdAt).toLocaleDateString()}</span>
+                  <span>Likes: {post.likes}</span>
+                  <span>Comments: {post.numComments}</span>
+                  <span>Shares: {post.numShares}</span>
+                </div>
+              </div>
+            ))}
+            {extractedPosts.length > 3 && (
+              <p className="text-xs text-gray-500 mt-2">
+                ...and {extractedPosts.length - 3} more posts
+              </p>
+            )}
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Privacy Notice */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <div className="flex items-start space-x-3">
-          <Shield className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-blue-800">
-            <strong>Privacy First:</strong> We only access your public LinkedIn posts for analysis. 
-            Your data is processed securely and you maintain full control over your information.
-          </div>
+      {/* Help Section */}
+      <div className="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
+        <h3 className="text-sm font-medium text-gray-900 mb-2">Need Help?</h3>
+        <div className="text-sm text-gray-600 space-y-1">
+          <p>• <strong>OAuth:</strong> Requires LinkedIn developer app setup. Contact support for assistance.</p>
+          <p>• <strong>Profile URL:</strong> Must be a public LinkedIn profile (linkedin.com/in/username)</p>
+          <p>• <strong>Privacy:</strong> Only public posts are accessible via profile URL method</p>
+          <p>• <strong>Rate Limits:</strong> Please wait between extraction attempts to avoid being rate limited</p>
         </div>
       </div>
     </div>

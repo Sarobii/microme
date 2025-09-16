@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { supabase } from "../lib/supabase";
 import {
@@ -43,8 +43,7 @@ export const Settings: React.FC = () => {
     data_size: 0,
   });
 
-  const fetchSettings = useCallback(async () => {
-    if (!user) return;
+  const fetchSettings = React.useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from("profiles")
@@ -85,8 +84,7 @@ export const Settings: React.FC = () => {
     }
   }, [user]);
 
-  const fetchStats = useCallback(async () => {
-    if (!user) return;
+  const fetchStats = React.useCallback(async () => {
     try {
       const [postsResult, personaResult, strategyResult, simulationResult] =
         await Promise.all([
@@ -130,9 +128,11 @@ export const Settings: React.FC = () => {
   }, [user]);
 
   useEffect(() => {
-    fetchSettings();
-    fetchStats();
-  }, [fetchSettings, fetchStats]);
+    if (user) {
+      fetchSettings();
+      fetchStats();
+    }
+  }, [user, fetchSettings, fetchStats]);
 
   const saveSettings = async () => {
     setSaving(true);
