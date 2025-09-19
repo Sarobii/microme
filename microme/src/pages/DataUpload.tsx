@@ -1,7 +1,10 @@
 import React, { useState, useCallback } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
-import { Upload, FileText, AlertCircle, CheckCircle, Loader } from 'lucide-react'
+import { Upload, FileText, AlertCircle, CheckCircle, Loader, Linkedin } from 'lucide-react'
+import { parseLinkedInCSV } from '../utils/csvParser'
+import { LinkedInIntegration } from '../components/LinkedInIntegration'
+import { LinkedInPost } from '../services/linkedInService'
 
 interface CSVPost {
   content: string
@@ -14,8 +17,9 @@ interface CSVPost {
 
 export const DataUpload: React.FC = () => {
   const { user } = useAuth()
-  const [uploadMethod, setUploadMethod] = useState<'csv' | 'linkedin'>('csv')
+  const [uploadMethod, setUploadMethod] = useState<'linkedin' | 'csv'>('linkedin')
   const [csvData, setCsvData] = useState<CSVPost[]>([])
+  const [linkedinData, setLinkedinData] = useState<any[]>([])
   const [processing, setProcessing] = useState(false)
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [statusMessage, setStatusMessage] = useState('')
@@ -25,67 +29,16 @@ export const DataUpload: React.FC = () => {
     const reader = new FileReader()
     
     reader.onload = (e) => {
-      try {
-        const csvText = e.target?.result as string
-        const lines = csvText.split('\n').filter(line => line.trim())
-        
-        if (lines.length < 2) {
-          setUploadStatus('error')
-          setStatusMessage('CSV file must contain at least a header row and one data row.')
-          return
-        }
-
-        const headers = lines[0].split(',').map(h => h.trim().toLowerCase())
-        const posts: CSVPost[] = []
-        
-        // Validate required columns
-        const contentIndex = headers.findIndex(h => h.includes('content') || h.includes('text') || h.includes('post'))
-        if (contentIndex === -1) {
-          setUploadStatus('error')
-          setStatusMessage('CSV must contain a column with "content", "text", or "post" in the header.')
-          return
-        }
-        
-        // Optional columns
-        const dateIndex = headers.findIndex(h => h.includes('date') || h.includes('time') || h.includes('created'))
-        const likesIndex = headers.findIndex(h => h.includes('like'))
-        const commentsIndex = headers.findIndex(h => h.includes('comment'))
-        const sharesIndex = headers.findIndex(h => h.includes('share') || h.includes('repost'))
-        const idIndex = headers.findIndex(h => h.includes('id') && !h.includes('user'))
-        
-        for (let i = 1; i < lines.length; i++) {
-          const columns = lines[i].split(',').map(c => c.trim())
-          
-          if (columns.length >= headers.length && columns[contentIndex]) {
-            const post: CSVPost = {
-              content: columns[contentIndex].replace(/^"(.*)"$/, '$1'), // Remove quotes if present
-              date: dateIndex >= 0 ? columns[dateIndex] : undefined,
-              likes: likesIndex >= 0 ? parseInt(columns[likesIndex]) || 0 : 0,
-              comments: commentsIndex >= 0 ? parseInt(columns[commentsIndex]) || 0 : 0,
-              shares: sharesIndex >= 0 ? parseInt(columns[sharesIndex]) || 0 : 0,
-              id: idIndex >= 0 ? columns[idIndex] : `csv_${i}_${Date.now()}`
-            }
-            
-            if (post.content.length > 10) { // Filter out very short content
-              posts.push(post)
-            }
-          }
-        }
-        
-        if (posts.length === 0) {
-          setUploadStatus('error')
-          setStatusMessage('No valid posts found in CSV file.')
-          return
-        }
-        
-        setCsvData(posts)
+      const csvText = e.target?.result as string
+      const parseResult = parseLinkedInCSV(csvText)
+      
+      if (parseResult.success && parseResult.data) {
+        setCsvData(parseResult.data)
         setUploadStatus('success')
-        setStatusMessage(`Successfully parsed ${posts.length} posts from CSV file.`)
-        
-      } catch (error) {
-        console.error('CSV parsing error:', error)
+        setStatusMessage(`Successfully parsed ${parseResult.data.length} posts from CSV file.`)
+      } else {
         setUploadStatus('error')
-        setStatusMessage('Error parsing CSV file. Please check the format.')
+        setStatusMessage(parseResult.error || 'Error parsing CSV file. Please check the format.')
       }
     }
     
@@ -114,25 +67,74 @@ export const DataUpload: React.FC = () => {
     
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0]
-      if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
-        handleFileUpload(file)
-      } else {
+      
+      // Validate file type
+      if (!file.type.includes('csv') && !file.name.endsWith('.csv')) {
         setUploadStatus('error')
-        setStatusMessage('Please upload a CSV file.')
+        setStatusMessage('Please upload a CSV file (.csv extension required).')
+        return
       }
+      
+      // Validate file size (10MB limit)
+      if (file.size > 10 * 1024 * 1024) {
+        setUploadStatus('error')
+        setStatusMessage('File size too large. Please upload a file smaller than 10MB.')
+        return
+      }
+      
+      // Reset previous state
+      setUploadStatus('idle')
+      setStatusMessage('')
+      setCsvData([])
+      
+      handleFileUpload(file)
     }
   }
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      handleFileUpload(e.target.files[0])
+      const file = e.target.files[0]
+      
+      // Validate file type
+      if (!file.type.includes('csv') && !file.name.endsWith('.csv')) {
+        setUploadStatus('error')
+        setStatusMessage('Please upload a CSV file (.csv extension required).')
+        return
+      }
+      
+      // Validate file size (10MB limit)
+      if (file.size > 10 * 1024 * 1024) {
+        setUploadStatus('error')
+        setStatusMessage('File size too large. Please upload a file smaller than 10MB.')
+        return
+      }
+      
+      // Reset previous state
+      setUploadStatus('idle')
+      setStatusMessage('')
+      setCsvData([])
+      
+      handleFileUpload(file)
     }
   }
 
+  const handleLinkedInPosts = (posts: LinkedInPost[]) => {
+    setLinkedinData(posts)
+    setUploadStatus('success')
+    setStatusMessage(`Successfully extracted ${posts.length} posts from LinkedIn!`)
+  }
+
+  const handleLinkedInError = (error: string) => {
+    setUploadStatus('error')
+    setStatusMessage(error)
+  }
+
   const processData = async () => {
-    if (csvData.length === 0) {
+    const dataToProcess = uploadMethod === 'linkedin' ? linkedinData : csvData
+    
+    if (dataToProcess.length === 0) {
       setUploadStatus('error')
-      setStatusMessage('No data to process. Please upload a CSV file first.')
+      setStatusMessage(`No data to process. Please ${uploadMethod === 'linkedin' ? 'connect your LinkedIn account' : 'upload a CSV file'} first.`)
       return
     }
 
@@ -151,17 +153,32 @@ export const DataUpload: React.FC = () => {
       }
 
       console.log('User authenticated, starting pipeline...')
-      const { data, error } = await supabase.functions.invoke('pipeline-orchestrator', {
-        body: {
-          posts: csvData.map(post => ({
+      
+      // Transform data based on upload method
+      const transformedPosts = uploadMethod === 'linkedin' 
+        ? linkedinData.map(post => ({
+            content: post.content,
+            createdAt: post.createdAt || new Date().toISOString(),
+            likes: post.likes || 0,
+            numComments: post.comments || 0,
+            numShares: post.shares || 0,
+            id: post.id || `linkedin_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            hasMedia: !!(post.media && post.media.length > 0)
+          }))
+        : csvData.map(post => ({
             content: post.content,
             createdAt: post.date || new Date().toISOString(),
             likes: post.likes || 0,
             numComments: post.comments || 0,
             numShares: post.shares || 0,
-            id: post.id || `generated_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-          })),
-          uploadSource: 'csv_upload',
+            id: post.id || `csv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            hasMedia: false
+          }))
+
+      const { data, error } = await supabase.functions.invoke('pipeline-orchestrator', {
+        body: {
+          posts: transformedPosts,
+          uploadSource: uploadMethod === 'linkedin' ? 'linkedin_integration' : 'csv_upload',
           goal: 'lighthearted authority in AI automation'
         },
         headers: {
@@ -191,18 +208,36 @@ export const DataUpload: React.FC = () => {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Upload LinkedIn Data</h1>
+        <h1 className="text-3xl font-bold text-gray-900">Connect Your LinkedIn Account</h1>
         <p className="mt-2 text-gray-600">
-          Upload your LinkedIn posts to start the MicroMe analysis pipeline. 
-          All data is processed transparently with full explainability.
+          Connect your LinkedIn account or provide your profile URL to instantly extract and analyze your posts. 
+          Get personalized insights into your professional content strategy with full AI transparency.
         </p>
       </div>
 
       {/* Upload Method Selection */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Choose Upload Method</h2>
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">Choose Connection Method</h2>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <button
+            onClick={() => setUploadMethod('linkedin')}
+            className={`p-4 rounded-lg border-2 transition-colors text-left ${
+              uploadMethod === 'linkedin'
+                ? 'border-blue-500 bg-blue-50'
+                : 'border-gray-200 hover:border-gray-300'
+            }`}
+          >
+            <Linkedin className="w-8 h-8 text-blue-600 mb-2" />
+            <h3 className="font-semibold mb-1 flex items-center">
+              LinkedIn Integration 
+              <span className="ml-2 px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">Recommended</span>
+            </h3>
+            <p className="text-sm text-gray-600">
+              Connect your LinkedIn account or provide your profile URL for instant post extraction.
+            </p>
+          </button>
+          
           <button
             onClick={() => setUploadMethod('csv')}
             className={`p-4 rounded-lg border-2 transition-colors text-left ${
@@ -211,32 +246,29 @@ export const DataUpload: React.FC = () => {
                 : 'border-gray-200 hover:border-gray-300'
             }`}
           >
-            <FileText className="w-8 h-8 text-blue-600 mb-2" />
+            <FileText className="w-8 h-8 text-gray-600 mb-2" />
             <h3 className="font-semibold mb-1">CSV Upload</h3>
             <p className="text-sm text-gray-600">
-              Upload a CSV file with your LinkedIn posts. Recommended for getting started quickly.
-            </p>
-          </button>
-          
-          <button
-            onClick={() => setUploadMethod('linkedin')}
-            className={`p-4 rounded-lg border-2 transition-colors text-left opacity-50 cursor-not-allowed ${
-              uploadMethod === 'linkedin'
-                ? 'border-blue-500 bg-blue-50'
-                : 'border-gray-200'
-            }`}
-            disabled
-          >
-            <div className="w-8 h-8 bg-blue-600 rounded mb-2 flex items-center justify-center">
-              <span className="text-white font-bold text-sm">in</span>
-            </div>
-            <h3 className="font-semibold mb-1">LinkedIn API</h3>
-            <p className="text-sm text-gray-600">
-              Direct integration with LinkedIn API. Coming soon.
+              Alternative option: Upload a CSV file with your LinkedIn posts if you prefer manual data entry.
             </p>
           </button>
         </div>
       </div>
+
+      {/* LinkedIn Integration Section */}
+      {uploadMethod === 'linkedin' && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
+            <Linkedin className="w-5 h-5 mr-2 text-blue-600" />
+            LinkedIn Integration
+          </h2>
+          
+          <LinkedInIntegration
+            onPostsExtracted={handleLinkedInPosts}
+            onError={handleLinkedInError}
+          />
+        </div>
+      )}
 
       {/* CSV Upload Section */}
       {uploadMethod === 'csv' && (
@@ -249,13 +281,25 @@ export const DataUpload: React.FC = () => {
             <div className="text-sm text-blue-800">
               <p className="mb-2">Your CSV should include the following columns:</p>
               <ul className="list-disc list-inside space-y-1">
-                <li><strong>Required:</strong> content/text/post - The text content of your posts</li>
-                <li><strong>Optional:</strong> date/created_at - Post publication date</li>
-                <li><strong>Optional:</strong> likes - Number of likes</li>
-                <li><strong>Optional:</strong> comments - Number of comments</li>
-                <li><strong>Optional:</strong> shares/reposts - Number of shares</li>
+                <li><strong>Required:</strong> content/text/post/description/body - The text content of your posts</li>
+                <li><strong>Optional:</strong> date/time/created/published/timestamp - Post publication date</li>
+                <li><strong>Optional:</strong> likes/reactions/hearts - Number of likes or reactions</li>
+                <li><strong>Optional:</strong> comments/replies/responses - Number of comments</li>
+                <li><strong>Optional:</strong> shares/reposts/retweets - Number of shares</li>
+                <li><strong>Optional:</strong> id/post_id/identifier - Unique post identifier</li>
               </ul>
-              <p className="mt-2 text-xs">Column names are case-insensitive and can include variations of these terms.</p>
+              <div className="mt-3 p-2 bg-blue-100 rounded">
+                <p className="font-medium mb-1">Example CSV format:</p>
+                <code className="text-xs">content,date,likes,comments,shares<br />
+                "Just launched my new project!",2024-01-15,45,12,8<br />
+                "Sharing some insights...",2024-01-18,67,23,15</code>
+              </div>
+              <p className="mt-2 text-xs">
+                • Column names are case-insensitive and flexible<br />
+                • Content should be at least 10 characters long<br />
+                • Quotes around content are automatically handled<br />
+                • Maximum file size: 10MB
+              </p>
             </div>
           </div>
           
@@ -355,6 +399,20 @@ export const DataUpload: React.FC = () => {
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Process Button for LinkedIn Data */}
+      {uploadMethod === 'linkedin' && linkedinData.length > 0 && (
+        <div className="mt-6 flex justify-center">
+          <button
+            onClick={processData}
+            disabled={processing}
+            className="flex items-center px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {processing && <Loader className="w-4 h-4 mr-2 animate-spin" />}
+            {processing ? 'Processing LinkedIn Data...' : 'Analyze My LinkedIn Posts'}
+          </button>
         </div>
       )}
       
